@@ -2,10 +2,12 @@
 #include "ngx_gwproxy_module.h"
 
 static void *ngx_gwproxy_create_srv_conf(ngx_conf_t *cf);
+static ngx_int_t ngx_gwproxy_post_conf(ngx_conf_t *cf);
 static char *ngx_stream_set_socks_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_stream_set_gw_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_gwproxy_init(ngx_conf_t *cf);
 
+ngx_gwproxy_conn_t gwconn;
 
 static ngx_command_t  ngx_stream_gwproxy_commands[] = {
 
@@ -29,7 +31,7 @@ static ngx_command_t  ngx_stream_gwproxy_commands[] = {
 
 static ngx_stream_module_t  ngx_stream_gwproxy_module_ctx = {
     NULL,                                  /* preconfiguration */
-    NULL,                                  /* postconfiguration */
+    ngx_gwproxy_post_conf,                 /* postconfiguration */
 
     NULL,                                  /* create main configuration */
     NULL,                                  /* init main configuration */
@@ -110,6 +112,32 @@ ngx_gwproxy_create_srv_conf(ngx_conf_t *cf)
 	conf->gwflag = NGX_CONF_UNSET;
 
     return conf;
+}
+
+static ngx_int_t
+ngx_gwproxy_post_conf(ngx_conf_t *cf)
+{
+	struct rlimit  rlmt;
+    if (getrlimit(RLIMIT_NOFILE, &rlmt) == -1) {
+        ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
+                      "getrlimit(RLIMIT_NOFILE) failed");
+        return NGX_ERROR;
+    }
+
+    gwconn.connection_n = (ngx_uint_t) rlmt.rlim_cur;
+    gwconn.connections = ngx_calloc(sizeof(ngx_connection_t *) * gwconn.connection_n,
+                              cf->log);
+    if (gwconn.connections == NULL) {
+        return NGX_ERROR;
+    }
+
+    gwconn.occupy_connections = ngx_calloc(sizeof(ngx_connection_t *) * gwconn.connection_n,
+                              cf->log);
+    if (gwconn.occupy_connections == NULL) {
+        return NGX_ERROR;
+    }
+
+	return NGX_OK;
 }
 
 
