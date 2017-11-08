@@ -8,23 +8,29 @@ static ngx_int_t ngx_http_gwproxy_create_request(ngx_http_request_t *r);
 
 ngx_int_t ngx_http_gwproxy_handler(ngx_http_request_t *r)
 {
-    ngx_connection_t *dc;
+    ngx_connection_t **dc;
+    dc = ngx_gwproxy_get_gw_connection();
 
-    dc = ngx_gwproxy_get_gw_connection_with_set_srclink(NGX_HTTP_REQUEST_LINK, r);
-    if(!dc) {
+    gwconn.src_conns[r->connection->fd].link_type = NGX_HTTP_REQUEST_LINK;
+    gwconn.src_conns[r->connection->fd].conn = r;
+	gwconn.src_conns[r->connection->fd].rel_connection = dc;
+
+    if(!dc || *dc == NULL) {
         ngx_log_debug1(NGX_LOG_DEBUG_STREAM, r->connection->log, 0, 
             "(%s): http gwproxy no find active gw connection", __FUNCTION__);
     }
     else if(ngx_http_gwproxy_create_request(r) == NGX_OK) {
         ngx_buf_t *request_buf = r->out->buf;
-        dc->send(dc, request_buf->pos, request_buf->last-request_buf->pos);
-        //gwconn.src_conns[dc->fd].link_type = NGX_NONE_LINK;
-        //gwconn.src_conns[dc->fd].src_link = NULL;
+        (*dc)->send(*dc, request_buf->pos, request_buf->last-request_buf->pos);
+
+	    //gwconn.src_conns[r->connection->fd].link_type = NGX_NONE_LINK;
+	    //gwconn.src_conns[r->connection->fd].conn = NULL;
+		//gwconn.src_conns[r->connection->fd].rel_connection = NULL;
     }
 
     //ngx_str_t retstr = ngx_string("HTTP/1.1 200 OK\r\nContent-Type: text/html;charset=ISO-8859-1\r\nContent-Length: 100\r\n\r\n<html><head><title>Ngx gwproxy module test</title></head><body><h1>Hello test from nginx!</h1></body></html>\r\n");
     //r->connection->send(r->connection, retstr.data, retstr.len);
-    //ngx_http_finalize_request(scr, NGX_DONE);
+    //ngx_http_finalize_request(r, NGX_DONE);
 
     return NGX_DONE;
 }
@@ -45,7 +51,7 @@ ngx_http_gwproxy_create_request(ngx_http_request_t *r)
     char  ngx_http_gwproxy_version[] = " HTTP/1.1" CRLF;
 
     method = r->method_name;
-    len = method.len + 1 + sizeof(ngx_http_gwproxy_version) - 1 + sizeof(CRLF) - 1;
+    len = 4 + method.len + 1 + sizeof(ngx_http_gwproxy_version) - 1 + sizeof(CRLF) - 1;
 
     len += r->uri.len + sizeof("?") - 1 + r->args.len;
 
@@ -81,6 +87,14 @@ ngx_http_gwproxy_create_request(ngx_http_request_t *r)
     }
 
     cl->buf = b;
+
+    //use connection fd on buffer
+    u_char fdbuf[4];
+	fdbuf[0] = (r->connection->fd>>24)&0xFF;
+	fdbuf[1] = (r->connection->fd>>16)&0xFF;
+	fdbuf[2] = (r->connection->fd>>8)&0xFF;
+	fdbuf[3] = (r->connection->fd)&0xFF;
+    b->last = ngx_copy(b->last, fdbuf, 4);
 
     /* the request line */
     b->last = ngx_copy(b->last, method.data, method.len);

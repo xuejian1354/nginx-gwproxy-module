@@ -6,19 +6,20 @@ extern ngx_gwproxy_conn_t gwconn;
 
 static void ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev);
 
-ngx_connection_t *ngx_gwproxy_get_gw_connection_with_set_srclink(ngx_src_conn_link_e type, void *link)
+ngx_connection_t **ngx_gwproxy_get_gw_connection()
 {
     ngx_uint_t i;
-    ngx_connection_t **c;
+    ngx_src_conn_t *sc;
 
-    c = gwconn.connections;
+    sc = gwconn.src_conns;
     i = gwconn.cur_fd;
     while(i < gwconn.connection_n) {
-        if(c[i] != NULL && gwconn.src_conns[i].link_type == NGX_NONE_LINK) {
+        if(sc[i].link_type == NGX_GW_STREAM_LINK) {
             gwconn.cur_fd = i+1;
-            gwconn.src_conns[i].link_type = type;
-            gwconn.src_conns[i].src_link = link;
-            return c[i];
+			if(gwconn.cur_fd >= gwconn.connection_n) {
+				gwconn.cur_fd = 0;
+			}
+            return (ngx_connection_t **)&sc[i].conn;
         }
 
         i++;
@@ -26,11 +27,9 @@ ngx_connection_t *ngx_gwproxy_get_gw_connection_with_set_srclink(ngx_src_conn_li
 
     i = 0;
     while(i < gwconn.cur_fd) {
-        if(c[i] != NULL && gwconn.src_conns[i].link_type == NGX_NONE_LINK) {
+        if(sc[i].link_type == NGX_GW_STREAM_LINK) {
             gwconn.cur_fd = i+1;
-            gwconn.src_conns[i].link_type = type;
-            gwconn.src_conns[i].src_link = link;
-            return c[i];
+            return (ngx_connection_t **)&sc[i].conn;
         }
 
         i++;
@@ -46,7 +45,8 @@ void ngx_stream_gw_proxy_handler(ngx_stream_session_t *s)
     c = s->connection;
     c->read->handler = ngx_stream_gwproxy_downstream_handler;
 
-    gwconn.connections[c->fd] = c;
+	gwconn.src_conns[c->fd].link_type = NGX_GW_STREAM_LINK;
+    gwconn.src_conns[c->fd].conn = c;
 
     ngx_post_event(c->read, &ngx_posted_events);
 }
@@ -57,7 +57,7 @@ ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev)
     ssize_t               n;
     ngx_stream_session_t  *s;
     ngx_connection_t      *c;
-    ngx_src_conn_t        *sc;
+	int                   scfd;
     u_char                buf[1024];
 
     if (ev->timedout) { 
@@ -68,7 +68,6 @@ ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev)
 
     c = ev->data;
     s = c->data;
-    sc = &gwconn.src_conns[c->fd];
 
     while (ev->ready) {
         n = c->recv(c, buf, sizeof(buf));
@@ -81,32 +80,34 @@ ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev)
 
         if (n == NGX_ERROR) { 
             /* error */
-            gwconn.connections[c->fd] = NULL;
             gwconn.src_conns[c->fd].link_type = NGX_NONE_LINK;
-            gwconn.src_conns[c->fd].src_link = NULL;
+            gwconn.src_conns[c->fd].conn = NULL;
 
             ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
                 "(%s): gw downstream recv error", __FUNCTION__);
-                return;
+            return;
         }
 
         /* process buf */
-        if (n > 0) {
-            if(sc->link_type == NGX_STREAM_CONNECTION_LINK && sc->src_link) {
-                ngx_connection_t *scl = sc->src_link;
-                scl->send(scl, buf, n);
+        if (n > 4) {
+			scfd = (buf[0]<<24) + (buf[1]<<16) + (buf[2]<<8) + buf[3];
+			ngx_src_conn_t *sc = &gwconn.src_conns[scfd];
+            if(sc->link_type == NGX_STREAM_CONNECTION_LINK) {
+                ngx_connection_t *scl = sc->conn;
+                scl->send(scl, buf+4, n-4);
             }
-            else if(sc->link_type == NGX_HTTP_REQUEST_LINK && sc->src_link) {
-                ngx_http_request_t *scr = sc->src_link;
+            else if(sc->link_type == NGX_HTTP_REQUEST_LINK) {
+                ngx_http_request_t *scr = sc->conn;
                 if(scr) {
-                    scr->connection->send(scr->connection, buf, n);
+                    scr->connection->send(scr->connection, buf+4, n-4);
                     //ngx_str_t retstr = ngx_string("HTTP/1.1 200 OK\r\nContent-Type: text/html;charset=ISO-8859-1\r\nContent-Length: 100\r\n\r\n<html><head><title>Ngx gwproxy module test</title></head><body><h1>Hello test from nginx!</h1></body></html>\r\n");
                     //scr->connection->send(scr->connection, retstr.data, retstr.len);
                     //ngx_http_finalize_request(scr, NGX_DONE);
                 }
 
                 sc->link_type = NGX_NONE_LINK;
-                sc->src_link = NULL;
+                sc->conn = NULL;
+				sc->rel_connection = NULL;
             }
             else {
                 ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
@@ -114,9 +115,9 @@ ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev)
             }
         }
         else {
-            gwconn.connections[c->fd] = NULL;
             gwconn.src_conns[c->fd].link_type = NGX_NONE_LINK;
-            gwconn.src_conns[c->fd].src_link = NULL;
+            gwconn.src_conns[c->fd].conn = NULL;
+
             ngx_stream_finalize_session(s, NGX_STREAM_OK);
             return;
         }

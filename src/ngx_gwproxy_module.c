@@ -127,17 +127,15 @@ ngx_gwproxy_post_conf(ngx_conf_t *cf)
     }
 
     gwconn.connection_n = (ngx_uint_t) rlmt.rlim_cur;
-    gwconn.connections = ngx_calloc(sizeof(ngx_connection_t *) * gwconn.connection_n,
-                                        cf->log);
-    if (gwconn.connections == NULL) {
-        return NGX_ERROR;
-    }
-
-    gwconn.src_conns = ngx_calloc(sizeof(ngx_src_conn_t) * gwconn.connection_n,
-                                    cf->log);
+    gwconn.src_conns = ngx_calloc(sizeof(ngx_src_conn_t) * gwconn.connection_n, cf->log);
     if (gwconn.src_conns == NULL) {
         return NGX_ERROR;
     }
+
+	ngx_uint_t i;
+	for(i=0; i<gwconn.connection_n; i++) {
+		gwconn.src_conns[i].link_type = NGX_NONE_LINK;
+	}
 
     return NGX_OK;
 }

@@ -14,23 +14,25 @@ typedef struct {
 
 typedef enum {
     NGX_NONE_LINK = 0,
+    NGX_GW_STREAM_LINK,
     NGX_STREAM_CONNECTION_LINK,
     NGX_HTTP_REQUEST_LINK
 } ngx_src_conn_link_e;
 
 typedef struct {
     ngx_src_conn_link_e    link_type;
-    void                   *src_link;
+    void                   *conn;	//connection or request
+	ngx_connection_t       **rel_connection;
 }ngx_src_conn_t;
 
 typedef struct {
-    ngx_connection_t       **connections;
     ngx_src_conn_t         *src_conns;
     ngx_uint_t             connection_n;
     ngx_uint_t             cur_fd;
 }ngx_gwproxy_conn_t;
 
-ngx_connection_t *ngx_gwproxy_get_gw_connection_with_set_srclink(ngx_src_conn_link_e type, void *link);
+ngx_connection_t **ngx_gwproxy_get_gw_connection();
+
 
 void ngx_stream_socks_proxy_handler(ngx_stream_session_t *s);
 void ngx_stream_gw_proxy_handler(ngx_stream_session_t *s);

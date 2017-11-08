@@ -8,15 +8,19 @@ static void ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev);
 
 void ngx_stream_socks_proxy_handler(ngx_stream_session_t *s)
 {
-    ngx_connection_t *c, *dc;
+    ngx_connection_t *c, **dc;
 
     c = s->connection;
-    dc = ngx_gwproxy_get_gw_connection_with_set_srclink(NGX_STREAM_CONNECTION_LINK, c);
+    dc = ngx_gwproxy_get_gw_connection();
     if(!dc) {
         ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0, 
             "(%s): socks upstream no find active gw connection", __FUNCTION__);
     }
-    s->connection = dc;
+
+	gwconn.src_conns[c->fd].link_type = NGX_STREAM_CONNECTION_LINK;
+    gwconn.src_conns[c->fd].conn = c;
+	gwconn.src_conns[c->fd].rel_connection = dc;
+
     c->read->handler = ngx_stream_socks_gwproxy_upstream_handler;
 
     ngx_post_event(c->read, &ngx_posted_events);
@@ -27,7 +31,7 @@ static void
 ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 {
     ssize_t                n;
-    ngx_connection_t      *c, *dc;
+    ngx_connection_t      *c, **dc;
     ngx_stream_session_t  *s;
     u_char                buf[1024];
 
@@ -39,18 +43,24 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 
     c = ev->data;
     s = c->data;
-    dc = s->connection;
-    if(!dc) {
-        dc = ngx_gwproxy_get_gw_connection_with_set_srclink(NGX_STREAM_CONNECTION_LINK, c);
-        if(!dc) {
+    dc = gwconn.src_conns[c->fd].rel_connection;
+
+    if(!dc || *dc == NULL) {
+        dc = ngx_gwproxy_get_gw_connection();
+        if(!dc || *dc == NULL) {
             ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0, 
                 "(%s): gw connection disable, socks upstream no find active", __FUNCTION__);
         }
-        s->connection = dc;
+        gwconn.src_conns[c->fd].rel_connection = dc;
     }
 
     while (ev->ready) {
-        n = c->recv(c, buf, sizeof(buf));
+		buf[0] = (c->fd >> 24) & 0xFF;
+		buf[1] = (c->fd >> 16) & 0xFF;
+		buf[2] = (c->fd >> 8) & 0xFF;
+		buf[3] = (c->fd) & 0xFF;
+
+        n = c->recv(c, buf+4, sizeof(buf)-4);
 
         if (n == NGX_AGAIN) {
             ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
@@ -65,8 +75,8 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
         }
 
         if (n > 0) {
-            if(dc) {
-                dc->send(dc, buf, n);
+            if(dc && *dc) {
+                (*dc)->send(*dc, buf, n+4);
             }
             else {
                 ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
@@ -74,11 +84,10 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
             }
         }
         else {
-            if(dc) {
-                gwconn.src_conns[dc->fd].link_type = NGX_NONE_LINK;
-                gwconn.src_conns[dc->fd].src_link = NULL;
-            }
-            s->connection = c;
+            gwconn.src_conns[c->fd].link_type = NGX_NONE_LINK;
+            gwconn.src_conns[c->fd].conn = NULL;
+			gwconn.src_conns[c->fd].rel_connection = NULL;
+
             ngx_stream_finalize_session(s, NGX_STREAM_OK);
             return;
         }
