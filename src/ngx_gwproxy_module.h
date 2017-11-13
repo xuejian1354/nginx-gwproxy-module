@@ -7,6 +7,10 @@
 #include <ngx_stream.h>
 #include <ngx_http.h>
 
+#define NGX_GWPROXY_CONNECTION_NEW_PRE	"JFLS#%^Fs&XK*HJGTT&$#@!S$L:ZXRLC"
+#define NGX_GWPROXY_CONNECTION_NEW_SUF	"NBID*^4>BC{j&t#5PK!FLSi7^9HCBO%U"
+
+
 typedef struct {
     ngx_flag_t flag;
     ngx_flag_t gwflag;
