@@ -149,4 +149,24 @@ ngx_http_gwproxy_create_request(ngx_http_request_t *r)
      return NGX_OK;
 }
 
+void ngx_http_gwproxy_downstream_callback(ngx_src_conn_t *sc, u_char *buf, size_t size)
+{
+	ngx_http_request_t *scr;
+	if(!sc) {
+		return;
+	}
+
+	scr = sc->conn;
+	if(scr) {
+	    scr->connection->send(scr->connection, buf, size);
+	    //ngx_str_t retstr = ngx_string("HTTP/1.1 200 OK\r\nContent-Type: text/html;charset=ISO-8859-1\r\nContent-Length: 100\r\n\r\n<html><head><title>Ngx gwproxy module test</title></head><body><h1>Hello test from nginx!</h1></body></html>\r\n");
+	    //scr->connection->send(scr->connection, retstr.data, retstr.len);
+	    //ngx_http_finalize_request(scr, NGX_DONE);
+	}
+
+	sc->link_type = NGX_NONE_LINK;
+	sc->conn = NULL;
+	sc->rel_connection = NULL;
+}
+
 

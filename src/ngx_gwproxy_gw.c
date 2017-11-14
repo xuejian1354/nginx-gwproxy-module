@@ -93,21 +93,10 @@ ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev)
 			scfd = (buf[0]<<24) + (buf[1]<<16) + (buf[2]<<8) + buf[3];
 			ngx_src_conn_t *sc = &gwconn.src_conns[scfd];
             if(sc->link_type == NGX_STREAM_CONNECTION_LINK) {
-                ngx_connection_t *scl = sc->conn;
-                scl->send(scl, buf+4, n-4);
+				ngx_stream_socks_gwproxy_downstream_send(sc, buf+4, n-4);
             }
             else if(sc->link_type == NGX_HTTP_REQUEST_LINK) {
-                ngx_http_request_t *scr = sc->conn;
-                if(scr) {
-                    scr->connection->send(scr->connection, buf+4, n-4);
-                    //ngx_str_t retstr = ngx_string("HTTP/1.1 200 OK\r\nContent-Type: text/html;charset=ISO-8859-1\r\nContent-Length: 100\r\n\r\n<html><head><title>Ngx gwproxy module test</title></head><body><h1>Hello test from nginx!</h1></body></html>\r\n");
-                    //scr->connection->send(scr->connection, retstr.data, retstr.len);
-                    //ngx_http_finalize_request(scr, NGX_DONE);
-                }
-
-                sc->link_type = NGX_NONE_LINK;
-                sc->conn = NULL;
-				sc->rel_connection = NULL;
+				ngx_http_gwproxy_downstream_callback(sc, buf+4, n-4);
             }
             else {
                 ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
