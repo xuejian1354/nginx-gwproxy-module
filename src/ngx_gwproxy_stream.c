@@ -1,8 +1,11 @@
 
 #include "ngx_gwproxy_module.h"
 
+#define METHOD_ID 2
+
 extern ngx_module_t  ngx_stream_gwproxy_module;
 extern ngx_gwproxy_conn_t gwconn;
+extern ngx_gwproxy_srv_conf_t  *gwcf;
 
 static void ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev);
 
@@ -11,7 +14,7 @@ void ngx_stream_socks_proxy_handler(ngx_stream_session_t *s)
     ngx_connection_t *c = s->connection;
 
 	gwconn.src_conns[c->fd].link_type = NGX_STREAM_CONNECTION_LINK;
-	gwconn.src_conns[c->fd].status = NGX_GWLINK_START;
+	gwconn.src_conns[c->fd].status = NGX_GWLINK_AUTH_SOCKS5;
     gwconn.src_conns[c->fd].conn = c;
 	gwconn.src_conns[c->fd].rel_connection = NULL;
 
@@ -38,12 +41,104 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
     s = c->data;
 
 	switch(gwconn.src_conns[c->fd].status) {
+	case NGX_GWLINK_AUTH_SOCKS5:
+		if(gwcf->auth) {
+			//selectSocks5Authentication
+			u_char version = 0;
+			u_char num_methods = 0;
+
+			c->recv(c, &version, 1);
+			if (version != 5) {
+				break;
+			}
+
+			c->recv(c, &num_methods, 1);
+			if(num_methods <= 0) {
+				break;
+			}
+
+			u_char method_ids[num_methods];
+			u_char response[2];
+			response[0] = 5;  //SOCKS version
+			response[1] = 0xFF;  //Not found
+
+			size_t bread = 0;
+			while(bread < num_methods) {
+				bread += c->recv(c, method_ids+bread, num_methods-bread);
+			}
+
+			size_t i;
+			ngx_flag_t found = 0;
+			for(i=0; i<num_methods; i++) {
+				if(method_ids[i] == METHOD_ID) {
+					found = 1;
+					response[1] = METHOD_ID;
+				}
+			}
+
+			if(!found) {
+				break;
+			}
+
+			c->send(c, response, 2);
+			gwconn.src_conns[c->fd].status = NGX_GWLINK_AUTH_PASS;
+			break;
+		}
+
+	case NGX_GWLINK_AUTH_PASS:
+		if(gwcf->auth) {
+			//doUserPasswordAuthentication
+			u_char version = 0;
+			u_char ulen, plen;
+			u_char response[2];
+
+			c->recv(c, &version, 1);
+			if(version != 1) {
+				gwconn.src_conns[c->fd].status = NGX_GWLINK_AUTH_SOCKS5;
+				break;
+			}
+
+			c->recv(c, &ulen, 1);
+			if((char)ulen <= 0) {
+				gwconn.src_conns[c->fd].status = NGX_GWLINK_AUTH_SOCKS5;
+				break;
+			}
+
+			u_char user[ulen];
+			c->recv(c, user, ulen);
+
+			c->recv(c, &plen, 1);
+			if((char)plen <= 0) {
+				gwconn.src_conns[c->fd].status = NGX_GWLINK_AUTH_SOCKS5;
+				break;
+			}
+
+			u_char password[plen];
+			c->recv(c, password, plen);
+
+			if(gwcf->user.len == ulen
+				&& !ngx_strncmp(gwcf->user.data, user, ulen)
+				&& gwcf->pass.len == plen
+				&& !ngx_strncmp(gwcf->pass.data, password, plen)) {
+				response[0] = 1;
+				response[1] = 0;
+				c->send(c, response, 2);
+			}
+			else {
+				response[0] = 1;
+				response[1] = 1;
+				c->send(c, response, 2);
+				gwconn.src_conns[c->fd].status = NGX_GWLINK_AUTH_SOCKS5;
+				break;
+			}
+		}
+		gwconn.src_conns[c->fd].status = NGX_GWLINK_START;
+
 	case NGX_GWLINK_START:
 		dc = ngx_gwproxy_get_gw_connection();
 		if(!dc) {
 			ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0, 
 				"(%s): socks upstream no find active gw connection", __FUNCTION__);
-			ngx_stream_finalize_session(s, NGX_STREAM_SERVICE_UNAVAILABLE);
 			goto release;
 		}
 		gwconn.src_conns[c->fd].rel_connection = dc;
@@ -78,9 +173,6 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 
 			gwconn.src_conns[c->fd].status = NGX_GWLINK_LISTEN;
 		}
-		break;
-
-	case NGX_GWLINK_AUTH:
 		break;
 
 	case NGX_GWLINK_LISTEN:

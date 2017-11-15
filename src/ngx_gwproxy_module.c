@@ -9,11 +9,12 @@ static char *ngx_http_set_gw_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *con
 
 
 ngx_gwproxy_conn_t gwconn;
+ngx_gwproxy_srv_conf_t  *gwcf;
 
 static ngx_command_t  ngx_stream_gwproxy_commands[] = {
 
     { ngx_string("stream_proxy"),
-      NGX_STREAM_SRV_CONF|NGX_CONF_FLAG,
+      NGX_STREAM_SRV_CONF|NGX_CONF_1MORE,
       ngx_stream_set_stream_proxy,
       NGX_STREAM_SRV_CONF_OFFSET,
       0,
@@ -111,6 +112,9 @@ ngx_gwproxy_create_srv_conf(ngx_conf_t *cf)
 
     conf->flag = NGX_CONF_UNSET;
     conf->gwflag = NGX_CONF_UNSET;
+	conf->auth = 0;
+	conf->user.len = 0;
+	conf->pass.len = 0;
 
     return conf;
 }
@@ -144,10 +148,12 @@ ngx_gwproxy_post_conf(ngx_conf_t *cf)
 static char *
 ngx_stream_set_stream_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
+	ngx_uint_t       i;
     ngx_str_t        *value;
     ngx_stream_core_srv_conf_t *cscf;
 
     ngx_gwproxy_srv_conf_t  *gscf = conf;
+	gwcf = conf;
 
     if (gscf && gscf->flag != NGX_CONF_UNSET) {
         return "is duplicate";
@@ -168,6 +174,29 @@ ngx_stream_set_stream_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                         value[1].data, cmd->name.data);
         return NGX_CONF_ERROR;
     }
+
+	for (i = 2; i < cf->args->nelts; i++) {
+		if (ngx_strncmp(value[i].data, "user=", 5) == 0) {
+			gscf->user.len = value[i].len-5;
+			gscf->user.data = ngx_pcalloc(cf->pool, gscf->user.len);
+			memcpy(gscf->user.data, value[i].data+5, gscf->user.len);
+			continue;
+		}
+		else if (ngx_strncmp(value[i].data, "pass=", 5) == 0) {
+			gscf->pass.len = value[i].len-5;
+			gscf->pass.data = ngx_pcalloc(cf->pool, gscf->pass.len);
+			memcpy(gscf->pass.data, value[i].data+5, gscf->pass.len);
+			continue;
+		}
+
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "the invalid \"%V\" parameter", &value[i]);
+        return NGX_CONF_ERROR;
+    }
+
+	if(gscf->user.len > 0 &&  gscf->pass.len > 0) {
+		gscf->auth = 1;
+	}
 
     return NGX_CONF_OK;
 }

@@ -14,6 +14,9 @@
 typedef struct {
     ngx_flag_t flag;
     ngx_flag_t gwflag;
+	ngx_flag_t auth;
+	ngx_str_t user;
+	ngx_str_t pass;
 } ngx_gwproxy_srv_conf_t;
 
 typedef enum {
@@ -24,10 +27,11 @@ typedef enum {
 } ngx_src_conn_link_e;
 
 typedef enum {
-    NGX_GWLINK_START = 0,
-	NGX_GWLINK_AUTH,
-	NGX_GWLINK_LISTEN,
-	NGX_GWLINK_RELEASE
+    NGX_GWLINK_AUTH_SOCKS5 = 0,
+    NGX_GWLINK_AUTH_PASS,
+    NGX_GWLINK_START,
+    NGX_GWLINK_LISTEN,
+    NGX_GWLINK_RELEASE
 } ngx_gwlink_status_e;
 
 typedef struct {
