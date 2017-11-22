@@ -1,7 +1,7 @@
 
 #include "ngx_gwproxy_module.h"
 
-#define METHOD_ID 2
+#define METHOD_ID 2 //socks5(username/password)
 
 extern ngx_module_t  ngx_stream_gwproxy_module;
 extern ngx_gwproxy_conn_t gwconn;
