@@ -92,10 +92,10 @@ ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev)
         if (n > 4) {
 			scfd = (buf[0]<<24) + (buf[1]<<16) + (buf[2]<<8) + buf[3];
 			ngx_src_conn_t *sc = &gwconn.src_conns[scfd];
-            if(sc->link_type == NGX_STREAM_CONNECTION_LINK) {
+            if(sc && sc->link_type == NGX_STREAM_CONNECTION_LINK) {
 				ngx_stream_socks_gwproxy_downstream_send(sc, buf+4, n-4);
             }
-            else if(sc->link_type == NGX_HTTP_REQUEST_LINK) {
+            else if(sc && sc->link_type == NGX_HTTP_REQUEST_LINK) {
 				ngx_http_gwproxy_downstream_callback(sc, buf+4, n-4);
             }
             else {
