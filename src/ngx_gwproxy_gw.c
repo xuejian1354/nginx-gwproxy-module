@@ -89,19 +89,26 @@ ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev)
         }
 
         /* process buf */
-        if (n > 4) {
-			scfd = (buf[0]<<24) + (buf[1]<<16) + (buf[2]<<8) + buf[3];
-			ngx_src_conn_t *sc = &gwconn.src_conns[scfd];
-            if(sc && sc->link_type == NGX_STREAM_CONNECTION_LINK) {
-				ngx_stream_socks_gwproxy_downstream_send(sc, buf+4, n-4);
-            }
-            else if(sc && sc->link_type == NGX_HTTP_REQUEST_LINK) {
-				ngx_http_gwproxy_downstream_callback(sc, buf+4, n-4);
-            }
-            else {
-                ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
-                    "(%s): gw downstream no src connection found", __FUNCTION__);
-            }
+        if (n > 8) {
+			int ipos = 0;
+			while(ipos < n-8) {
+				int datalen = (buf[ipos]<<24) + (buf[ipos+1]<<16) + (buf[ipos+2]<<8) + buf[ipos+3];
+				if(datalen > 8 && datalen <= n) {
+					scfd = (buf[ipos+4]<<24) + (buf[ipos+5]<<16) + (buf[ipos+6]<<8) + buf[ipos+7];
+					ngx_src_conn_t *sc = &gwconn.src_conns[scfd];
+		            if(sc && sc->link_type == NGX_STREAM_CONNECTION_LINK) {
+						ngx_stream_socks_gwproxy_downstream_send(sc, buf+ipos+8, datalen-8);
+		            }
+		            else if(sc && sc->link_type == NGX_HTTP_REQUEST_LINK) {
+						ngx_http_gwproxy_downstream_callback(sc, buf+ipos+8, datalen-8);
+		            }
+		            else {
+		                ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
+		                    "(%s): gw downstream no src connection found", __FUNCTION__);
+		            }
+				}
+				ipos += datalen;
+			}
         }
         else {
             gwconn.src_conns[c->fd].link_type = NGX_NONE_LINK;

@@ -27,7 +27,7 @@ typedef enum {
 } ngx_src_conn_link_e;
 
 typedef enum {
-    NGX_GWLINK_SOCKS5 = 0,
+    NGX_GWLINK_INIT = 0,
     NGX_GWLINK_AUTH,
     NGX_GWLINK_START,
     NGX_GWLINK_LISTEN,

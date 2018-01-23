@@ -15,7 +15,7 @@ void ngx_stream_socks_proxy_handler(ngx_stream_session_t *s)
     ngx_connection_t *c = s->connection;
 
 	gwconn.src_conns[c->fd].link_type = NGX_STREAM_CONNECTION_LINK;
-	gwconn.src_conns[c->fd].status = NGX_GWLINK_SOCKS5;
+	gwconn.src_conns[c->fd].status = NGX_GWLINK_INIT;
     gwconn.src_conns[c->fd].conn = c;
 	gwconn.src_conns[c->fd].rel_connection = NULL;
 
@@ -42,7 +42,7 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
     s = c->data;
 
 	switch(gwconn.src_conns[c->fd].status) {
-	case NGX_GWLINK_SOCKS5:
+	case NGX_GWLINK_INIT:
 		if(1) {
 			//selectSocks5Authentication
 			u_char version = 0;
@@ -55,7 +55,7 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 
 			c->recv(c, &num_methods, 1);
 			if(num_methods <= 0) {
-				break;
+				goto release;
 			}
 
 			u_char method_ids[num_methods];
@@ -164,16 +164,20 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 		}
 
 		if(dc && *dc) {
-			c->buffer->pos[0] = (c->fd >> 24) & 0xFF;
-			c->buffer->pos[1] = (c->fd >> 16) & 0xFF;
-			c->buffer->pos[2] = (c->fd >> 8) & 0xFF;
-			c->buffer->pos[3] = (c->fd) & 0xFF;
-
 			ngx_str_t constr = ngx_string(NGX_GWPROXY_CONNECTION_NEW_PRE);
-			c->buffer->last = ngx_copy(c->buffer->pos+4, constr.data, constr.len);
+			c->buffer->last = ngx_copy(c->buffer->pos+8, constr.data, constr.len);
+			int datalen = constr.len + 8;
 
-			(*dc)->send(*dc, c->buffer->pos, c->buffer->last - c->buffer->pos);
+			c->buffer->pos[0] = (datalen >> 24) & 0xFF;
+			c->buffer->pos[1] = (datalen >> 16) & 0xFF;
+			c->buffer->pos[2] = (datalen >> 8) & 0xFF;
+			c->buffer->pos[3] = (datalen) & 0xFF;
+			c->buffer->pos[4] = (c->fd >> 24) & 0xFF;
+			c->buffer->pos[5] = (c->fd >> 16) & 0xFF;
+			c->buffer->pos[6] = (c->fd >> 8) & 0xFF;
+			c->buffer->pos[7] = (c->fd) & 0xFF;
 
+			(*dc)->send(*dc, c->buffer->pos, datalen);
 			gwconn.src_conns[c->fd].status = NGX_GWLINK_LISTEN;
 		}
 		break;
@@ -192,12 +196,17 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 		}
 
 		while (ev->ready) {
-			c->buffer->start[0] = (c->fd >> 24) & 0xFF;
-			c->buffer->start[1] = (c->fd >> 16) & 0xFF;
-			c->buffer->start[2] = (c->fd >> 8) & 0xFF;
-			c->buffer->start[3] = (c->fd) & 0xFF;
+			n = c->recv(c, c->buffer->start+8, c->buffer->end - c->buffer->start - 8);
 
-			n = c->recv(c, c->buffer->start+4, c->buffer->end-c->buffer->start-4);
+			int datalen = n + 8;
+			c->buffer->start[0] = (datalen >> 24) & 0xFF;
+			c->buffer->start[1] = (datalen >> 16) & 0xFF;
+			c->buffer->start[2] = (datalen >> 8) & 0xFF;
+			c->buffer->start[3] = (datalen) & 0xFF;
+			c->buffer->start[4] = (c->fd >> 24) & 0xFF;
+			c->buffer->start[5] = (c->fd >> 16) & 0xFF;
+			c->buffer->start[6] = (c->fd >> 8) & 0xFF;
+			c->buffer->start[7] = (c->fd) & 0xFF;
 
 			if (n == NGX_AGAIN) {
 				ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
@@ -214,7 +223,7 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 
 			if (n > 0) {
 				if(dc && *dc) {
-					(*dc)->send(*dc, c->buffer->start, n+4);
+					(*dc)->send(*dc, c->buffer->start, datalen);
 				}
 				else {
 					ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
@@ -224,7 +233,16 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 			else {
 				if(dc && *dc) {
 					ngx_str_t constr = ngx_string(NGX_GWPROXY_CONNECTION_NEW_SUF);
-					c->buffer->last = ngx_copy(c->buffer->pos+4, constr.data, constr.len);
+					int datalen = constr.len + 8;
+					c->buffer->pos[0] = (datalen >> 24) & 0xFF;
+					c->buffer->pos[1] = (datalen >> 16) & 0xFF;
+					c->buffer->pos[2] = (datalen >> 8) & 0xFF;
+					c->buffer->pos[3] = (datalen) & 0xFF;
+					c->buffer->pos[4] = (c->fd >> 24) & 0xFF;
+					c->buffer->pos[5] = (c->fd >> 16) & 0xFF;
+					c->buffer->pos[6] = (c->fd >> 8) & 0xFF;
+					c->buffer->pos[7] = (c->fd) & 0xFF;
+					c->buffer->last = ngx_copy(c->buffer->pos+8, constr.data, constr.len);
 					(*dc)->send(*dc, c->buffer->pos, c->buffer->last - c->buffer->pos);
 				}
 				goto release;
