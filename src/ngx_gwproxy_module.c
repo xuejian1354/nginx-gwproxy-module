@@ -9,7 +9,7 @@ static char *ngx_http_set_gw_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *con
 
 
 ngx_gwproxy_conn_t gwconn;
-ngx_gwproxy_srv_conf_t  *gwcf;
+ngx_gwproxy_srv_conf_t  *gwcf = NULL;
 
 static ngx_command_t  ngx_stream_gwproxy_commands[] = {
 
@@ -21,7 +21,7 @@ static ngx_command_t  ngx_stream_gwproxy_commands[] = {
       NULL },
 
     { ngx_string("gw_proxy"),
-      NGX_STREAM_SRV_CONF|NGX_CONF_FLAG,
+      NGX_STREAM_SRV_CONF|NGX_CONF_1MORE,
       ngx_stream_set_gw_proxy,
       NGX_STREAM_SRV_CONF_OFFSET,
       0,
@@ -113,8 +113,11 @@ ngx_gwproxy_create_srv_conf(ngx_conf_t *cf)
     conf->flag = NGX_CONF_UNSET;
     conf->gwflag = NGX_CONF_UNSET;
 	conf->auth = 0;
+	conf->gwauth = 0;
 	conf->user.len = 0;
 	conf->pass.len = 0;
+	conf->gwuser.len = 0;
+	conf->gwpass.len = 0;
 
     return conf;
 }
@@ -152,8 +155,10 @@ ngx_stream_set_stream_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_str_t        *value;
     ngx_stream_core_srv_conf_t *cscf;
 
-    ngx_gwproxy_srv_conf_t  *gscf = conf;
-	gwcf = conf;
+	if(gwcf == NULL)
+		gwcf = conf;
+
+    ngx_gwproxy_srv_conf_t  *gscf = gwcf;
 
     if (gscf && gscf->flag != NGX_CONF_UNSET) {
         return "is duplicate";
@@ -205,12 +210,16 @@ ngx_stream_set_stream_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 static char *
 ngx_stream_set_gw_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
+	ngx_uint_t       i;
     ngx_str_t        *value;
     ngx_stream_core_srv_conf_t *cscf;
 
-    ngx_gwproxy_srv_conf_t  *gscf = conf;
+	if(gwcf == NULL)
+		gwcf = conf;
 
-    if (gscf && gscf->flag != NGX_CONF_UNSET) {
+    ngx_gwproxy_srv_conf_t  *gscf = gwcf;
+
+    if (gscf && gscf->gwflag != NGX_CONF_UNSET) {
         return "is duplicate";
     }
 
@@ -229,6 +238,29 @@ ngx_stream_set_gw_proxy(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                     value[1].data, cmd->name.data);
         return NGX_CONF_ERROR;
     }
+
+	for (i = 2; i < cf->args->nelts; i++) {
+		if (ngx_strncmp(value[i].data, "user=", 5) == 0) {
+			gscf->gwuser.len = value[i].len-5;
+			gscf->gwuser.data = ngx_pcalloc(cf->pool, gscf->gwuser.len);
+			memcpy(gscf->gwuser.data, value[i].data+5, gscf->gwuser.len);
+			continue;
+		}
+		else if (ngx_strncmp(value[i].data, "pass=", 5) == 0) {
+			gscf->gwpass.len = value[i].len-5;
+			gscf->gwpass.data = ngx_pcalloc(cf->pool, gscf->gwpass.len);
+			memcpy(gscf->gwpass.data, value[i].data+5, gscf->gwpass.len);
+			continue;
+		}
+
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "the invalid \"%V\" parameter", &value[i]);
+        return NGX_CONF_ERROR;
+    }
+
+	if(gscf->gwuser.len > 0 &&  gscf->gwpass.len > 0) {
+		gscf->gwauth = 1;
+	}
 
     return NGX_CONF_OK;
 }

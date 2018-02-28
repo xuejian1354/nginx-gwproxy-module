@@ -7,16 +7,18 @@
 #include <ngx_stream.h>
 #include <ngx_http.h>
 
-#define NGX_GWPROXY_CONNECTION_NEW_PRE	"JFLS#%^Fs&XK*HJGTT&$#@!S$L:ZXRLC"
-#define NGX_GWPROXY_CONNECTION_NEW_SUF	"NBID*^4>BC{j&t#5PK!FLSi7^9HCBO%U"
-
+#define METHOD_NONE 0 //socks5(no auth)
+#define METHOD_AUTH 2 //socks5(username/password)
 
 typedef struct {
     ngx_flag_t flag;
     ngx_flag_t gwflag;
 	ngx_flag_t auth;
+	ngx_flag_t gwauth;
 	ngx_str_t user;
 	ngx_str_t pass;
+	ngx_str_t gwuser;
+	ngx_str_t gwpass;
 } ngx_gwproxy_srv_conf_t;
 
 typedef enum {
