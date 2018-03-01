@@ -15,7 +15,8 @@ ngx_connection_t **ngx_gwproxy_get_gw_connection()
     sc = gwconn.src_conns;
     i = gwconn.cur_fd;
     while(i < gwconn.connection_n) {
-        if(sc[i].link_type == NGX_GW_STREAM_LINK) {
+        if(sc[i].link_type == NGX_GW_STREAM_LINK
+			&& sc[i].rel_connection == NULL) {
             gwconn.cur_fd = i+1;
 			if(gwconn.cur_fd >= gwconn.connection_n) {
 				gwconn.cur_fd = 0;
@@ -28,7 +29,8 @@ ngx_connection_t **ngx_gwproxy_get_gw_connection()
 
     i = 0;
     while(i < gwconn.cur_fd) {
-        if(sc[i].link_type == NGX_GW_STREAM_LINK) {
+        if(sc[i].link_type == NGX_GW_STREAM_LINK
+			&& sc[i].rel_connection == NULL) {
             gwconn.cur_fd = i+1;
             return (ngx_connection_t **)&sc[i].conn;
         }
