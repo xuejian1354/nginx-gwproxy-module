@@ -32,6 +32,7 @@ typedef enum {
     NGX_GWLINK_INIT = 0,
     NGX_GWLINK_AUTH,
     NGX_GWLINK_START,
+    NGX_GWLINK_IGNRECV,
     NGX_GWLINK_LISTEN,
     NGX_GWLINK_RELEASE
 } ngx_gwlink_status_e;
@@ -54,7 +55,6 @@ ngx_connection_t **ngx_gwproxy_get_gw_connection();
 
 void ngx_stream_socks_proxy_handler(ngx_stream_session_t *s);
 void ngx_stream_gw_proxy_handler(ngx_stream_session_t *s);
-void ngx_stream_socks_gwproxy_downstream_send(ngx_src_conn_t *sc, u_char *buf, size_t size);
 
 ngx_int_t ngx_http_gwproxy_handler(ngx_http_request_t *r);
 void ngx_http_gwproxy_downstream_callback(ngx_src_conn_t *sc, u_char *buf, size_t size);

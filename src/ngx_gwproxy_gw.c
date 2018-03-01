@@ -182,8 +182,27 @@ ngx_stream_gwproxy_downstream_handler(ngx_event_t *ev)
 			c->buffer->temporary = 1;
 		}
 
-		gwconn.src_conns[c->fd].status = NGX_GWLINK_LISTEN;
+		gwconn.src_conns[c->fd].status = NGX_GWLINK_IGNRECV;
 		break;
+
+	case NGX_GWLINK_IGNRECV:
+		if(1) {
+			//selectSocks5Authentication
+			u_char version = 0;
+			u_char response = 0xFF;
+
+			c->recv(c, &version, 1);
+			if (version != 5) {
+				goto release;
+			}
+
+			c->recv(c, &response, 1);
+			if(response != METHOD_NONE && response != METHOD_AUTH) {
+				goto release;
+			}
+
+			gwconn.src_conns[c->fd].status = NGX_GWLINK_LISTEN;
+		}
 
 	case NGX_GWLINK_LISTEN:
 		if(1) {
