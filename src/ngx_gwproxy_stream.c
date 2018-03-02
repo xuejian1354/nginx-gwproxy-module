@@ -178,9 +178,9 @@ ngx_stream_socks_gwproxy_upstream_handler(ngx_event_t *ev)
 		while (ev->ready) {
 			n = c->recv(c, c->buffer->start, c->buffer->end - c->buffer->start);
 			if (n == NGX_AGAIN) {
-				ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
-					"(%s): socks upstream recv again", __FUNCTION__);
-				break;
+				//ngx_log_debug1(NGX_LOG_DEBUG_STREAM, ev->log, 0,
+					//"(%s): socks upstream recv again", __FUNCTION__);
+				continue;
 			}
 
 			if (n == NGX_ERROR) { 
